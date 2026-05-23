@@ -62,7 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
   bool _isLoading = false;
-  static const String _apiKey = "AIzaSyDsCinZeDYV0t5QdZZk6zurteehlBzG0OY";
+  static const String _apiKey = "AIzaSyDs4B0AGEewkVi_yKoyDG-NX9bW8xeKvPk";
 
   List<_ChatSession> _sessions = [];
   _ChatSession? _currentSession;

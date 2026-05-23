@@ -527,7 +527,7 @@ class _HealthStatsScreenState extends State<HealthStatsScreen> {
                             'T7',
                             'CN',
                           ];
-                          if (idx >= 0 && idx < days.length)
+                          if (idx >= 0 && idx < days.length) {
                             return Text(
                               days[idx],
                               style: const TextStyle(
@@ -535,8 +535,9 @@ class _HealthStatsScreenState extends State<HealthStatsScreen> {
                                 color: _C.textHint,
                               ),
                             );
+                          }
                         } else {
-                          if (idx % 5 == 0)
+                          if (idx % 5 == 0) {
                             return Text(
                               'N${idx + 1}',
                               style: const TextStyle(
@@ -544,6 +545,7 @@ class _HealthStatsScreenState extends State<HealthStatsScreen> {
                                 color: _C.textHint,
                               ),
                             );
+                          }
                         }
                         return const SizedBox();
                       },
@@ -663,7 +665,7 @@ class _HealthStatsScreenState extends State<HealthStatsScreen> {
                       showTitles: true,
                       getTitlesWidget: (v, _) {
                         final i = v.toInt();
-                        if (i >= 0 && i < days.length)
+                        if (i >= 0 && i < days.length) {
                           return Text(
                             days[i],
                             style: const TextStyle(
@@ -671,6 +673,7 @@ class _HealthStatsScreenState extends State<HealthStatsScreen> {
                               color: _C.textHint,
                             ),
                           );
+                        }
                         return const SizedBox();
                       },
                     ),

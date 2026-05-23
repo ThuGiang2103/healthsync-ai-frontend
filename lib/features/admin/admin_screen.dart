@@ -35,13 +35,13 @@ class _UserModel {
     required this.createdAt,
   });
   factory _UserModel.fromJson(Map<String, dynamic> j) => _UserModel(
-    id: j['id'] ?? '',
-    fullName: j['fullName'] ?? 'Chưa có tên',
-    email: j['email'] ?? '',
-    role: j['role'] ?? 'user',
-    isActive: j['isActive'] ?? true,
-    createdAt: j['createdAt'] ?? '',
-  );
+        id: j['id'] ?? '',
+        fullName: j['fullName'] ?? 'Chưa có tên',
+        email: j['email'] ?? '',
+        role: j['role'] ?? 'user',
+        isActive: j['isActive'] ?? true,
+        createdAt: j['createdAt'] ?? '',
+      );
 }
 
 class AdminScreen extends StatefulWidget {
@@ -242,12 +242,14 @@ class _AdminScreenState extends State<AdminScreen>
       if (res.statusCode == 200) {
         setState(() => _users.remove(user));
         ScaffoldMessenger.of(
+          // ignore: use_build_context_synchronously
           context,
         ).showSnackBar(const SnackBar(content: Text('Đã xóa thành công')));
         _loadStats();
       }
     } catch (_) {
       ScaffoldMessenger.of(
+        // ignore: use_build_context_synchronously
         context,
       ).showSnackBar(const SnackBar(content: Text('Lỗi kết nối')));
     }
@@ -366,12 +368,14 @@ class _AdminScreenState extends State<AdminScreen>
       );
       if (res.statusCode == 200) {
         ScaffoldMessenger.of(
+          // ignore: use_build_context_synchronously
           context,
         ).showSnackBar(SnackBar(content: Text('Đã xóa $label')));
         _loadStats();
       }
     } catch (_) {
       ScaffoldMessenger.of(
+        // ignore: use_build_context_synchronously
         context,
       ).showSnackBar(const SnackBar(content: Text('Lỗi kết nối')));
     }
@@ -493,10 +497,11 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   Widget _buildStatsTab() {
-    if (_loadingStats)
+    if (_loadingStats) {
       return const Center(
         child: CircularProgressIndicator(color: _C.purple400),
       );
+    }
 
     final cards = [
       (
@@ -585,6 +590,7 @@ class _AdminScreenState extends State<AdminScreen>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
+              // ignore: deprecated_member_use
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -656,13 +662,13 @@ class _AdminScreenState extends State<AdminScreen>
                   child: CircularProgressIndicator(color: _C.purple400),
                 )
               : _users.isEmpty
-              ? const Center(child: Text('Không tìm thấy người dùng'))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: _users.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) => _buildUserCard(_users[i]),
-                ),
+                  ? const Center(child: Text('Không tìm thấy người dùng'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: _users.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) => _buildUserCard(_users[i]),
+                    ),
         ),
       ],
     );

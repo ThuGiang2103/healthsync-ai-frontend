@@ -263,16 +263,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSectionTitle(String t) => Padding(
-    padding: const EdgeInsets.only(left: 4),
-    child: Text(
-      t,
-      style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color: _C.textMain,
-      ),
-    ),
-  );
+        padding: const EdgeInsets.only(left: 4),
+        child: Text(
+          t,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: _C.textMain,
+          ),
+        ),
+      );
 
   Widget _buildInfoCard() {
     return Container(
@@ -353,12 +353,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _divider() => const Divider(
-    height: 1,
-    thickness: 1,
-    indent: 56,
-    endIndent: 16,
-    color: Color(0xFFF5E0EC),
-  );
+        height: 1,
+        thickness: 1,
+        indent: 56,
+        endIndent: 16,
+        color: Color(0xFFF5E0EC),
+      );
 
   Widget _buildHealthCard() {
     return Container(
@@ -563,6 +563,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               await AuthService.logout();
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(
+                  // ignore: use_build_context_synchronously
                   context,
                   '/login',
                   (r) => false,
@@ -613,6 +614,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               await AuthService.logout();
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(
+                  // ignore: use_build_context_synchronously
                   context,
                   '/login',
                   (r) => false,
@@ -1696,39 +1698,39 @@ class _GuideItemState extends State<_GuideItem> {
 
 // ─── HELPERS DUNG CHUNG ───────────────────────────────────────────
 AppBar _appBar(BuildContext context, String title) => AppBar(
-  title: Text(
-    title,
-    style: const TextStyle(fontWeight: FontWeight.w700, color: _C.pink700),
-  ),
-  backgroundColor: Colors.white,
-  foregroundColor: _C.pink700,
-  elevation: 0,
-  leading: IconButton(
-    icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-    onPressed: () => Navigator.pop(context),
-  ),
-);
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w700, color: _C.pink700),
+      ),
+      backgroundColor: Colors.white,
+      foregroundColor: _C.pink700,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+        onPressed: () => Navigator.pop(context),
+      ),
+    );
 
 Widget _card(List<Widget> children) => Container(
-  decoration: BoxDecoration(
-    color: _C.card,
-    borderRadius: BorderRadius.circular(16),
-    border: Border.all(color: _C.border),
-  ),
-  child: Column(children: children),
-);
+      decoration: BoxDecoration(
+        color: _C.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _C.border),
+      ),
+      child: Column(children: children),
+    );
 
 Widget _sectionLabel(String t) => Padding(
-  padding: const EdgeInsets.only(left: 4, bottom: 8),
-  child: Text(
-    t,
-    style: const TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.w700,
-      color: _C.textMain,
-    ),
-  ),
-);
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        t,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: _C.textMain,
+        ),
+      ),
+    );
 
 Widget _switchTile(
   String title,
@@ -1746,7 +1748,7 @@ Widget _switchTile(
         ? Text(sub, style: const TextStyle(fontSize: 12, color: _C.textSub))
         : null,
     value: val,
-    activeColor: _C.pink400,
+    activeThumbColor: _C.pink400,
     onChanged: onChanged,
   );
 }
@@ -1797,9 +1799,9 @@ Widget _infoTile(
 }
 
 Widget _textBlock(String text) => Padding(
-  padding: const EdgeInsets.all(16),
-  child: Text(
-    text,
-    style: const TextStyle(fontSize: 13, color: _C.textSub, height: 1.6),
-  ),
-);
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 13, color: _C.textSub, height: 1.6),
+      ),
+    );
