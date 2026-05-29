@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
 import '../../services/auth_service.dart';
 
 class _C {
@@ -24,39 +27,56 @@ class _C {
 const String _baseUrl = 'https://healthsync-ai-y60b.onrender.com';
 
 class _UserModel {
-  final String id, fullName, email, role, createdAt;
-  bool isActive;
-  _UserModel({
+  final String id;
+  final String fullName;
+  final String email;
+  final String phone;
+  final String role;
+  final String createdAt;
+  final bool isActive;
+
+  const _UserModel({
     required this.id,
     required this.fullName,
     required this.email,
+    required this.phone,
     required this.role,
     required this.isActive,
     required this.createdAt,
   });
-  factory _UserModel.fromJson(Map<String, dynamic> j) => _UserModel(
-        id: j['id'] ?? '',
-        fullName: j['fullName'] ?? 'Chưa có tên',
-        email: j['email'] ?? '',
-        role: j['role'] ?? 'user',
-        isActive: j['isActive'] ?? true,
-        createdAt: j['createdAt'] ?? '',
-      );
+
+  factory _UserModel.fromJson(Map<String, dynamic> j) {
+    return _UserModel(
+      id: '${j['_id'] ?? j['id'] ?? ''}',
+      fullName: '${j['fullName'] ?? j['name'] ?? 'Chưa có tên'}',
+      email: '${j['email'] ?? ''}',
+      phone: '${j['phone'] ?? j['phoneNumber'] ?? ''}',
+      role: '${j['role'] ?? 'user'}',
+      isActive: j['isActive'] is bool ? j['isActive'] : true,
+      createdAt: '${j['createdAt'] ?? ''}',
+    );
+  }
 }
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
+
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
 class _AdminScreenState extends State<AdminScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tab;
+  late final TabController _tab;
+
+  final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
+
   Map<String, dynamic> _stats = {};
   List<_UserModel> _users = [];
-  bool _loadingStats = true, _loadingUsers = true;
-  final _searchCtrl = TextEditingController();
+
+  bool _loadingStats = true;
+  bool _loadingUsers = true;
   String _search = '';
 
   @override
@@ -69,6 +89,7 @@ class _AdminScreenState extends State<AdminScreen>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _tab.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -76,141 +97,180 @@ class _AdminScreenState extends State<AdminScreen>
 
   Future<String?> _token() => AuthService.getToken();
 
-  Future<void> _loadStats() async {
-    setState(() => _loadingStats = true);
+  Future<Map<String, String>> _headers() async {
+    final token = await _token();
+    return {
+      'Content-Type': 'application/json',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  dynamic _tryDecode(String body) {
     try {
-      final token = await _token();
+      return jsonDecode(body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _errorMessage(http.Response res, String fallback) {
+    final data = _tryDecode(res.body);
+    if (data is Map<String, dynamic>) {
+      return '${data['message'] ?? data['error'] ?? fallback}';
+    }
+    return fallback;
+  }
+
+  void _showSnack(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? _C.red400 : _C.mint700,
+      ),
+    );
+  }
+
+  Future<void> _loadStats() async {
+    if (mounted) setState(() => _loadingStats = true);
+
+    try {
       final res = await http.get(
         Uri.parse('$_baseUrl/api/admin/stats'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: await _headers(),
       );
+
+      if (!mounted) return;
+
       if (res.statusCode == 200) {
+        final data = _tryDecode(res.body);
         setState(() {
-          _stats = jsonDecode(res.body);
+          _stats = data is Map<String, dynamic> ? data : {};
           _loadingStats = false;
         });
       } else {
         setState(() => _loadingStats = false);
       }
     } catch (_) {
-      setState(() => _loadingStats = false);
+      if (mounted) setState(() => _loadingStats = false);
     }
   }
 
   Future<void> _loadUsers() async {
-    setState(() => _loadingUsers = true);
+    if (mounted) setState(() => _loadingUsers = true);
+
     try {
-      final token = await _token();
       final uri = Uri.parse('$_baseUrl/api/admin/users').replace(
-        queryParameters: _search.isNotEmpty ? {'search': _search} : null,
+        queryParameters:
+            _search.trim().isNotEmpty ? {'search': _search.trim()} : null,
       );
-      final res = await http.get(
-        uri,
-        headers: {'Authorization': 'Bearer $token'},
-      );
+
+      final res = await http.get(uri, headers: await _headers());
+
+      if (!mounted) return;
+
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
+        final data = _tryDecode(res.body);
+        final rawUsers = data is Map<String, dynamic>
+            ? data['users']
+            : data is List
+                ? data
+                : [];
+
         setState(() {
-          _users = (data['users'] as List)
-              .map((u) => _UserModel.fromJson(u))
-              .toList();
+          _users = rawUsers is List
+              ? rawUsers
+                  .whereType<Map<String, dynamic>>()
+                  .map(_UserModel.fromJson)
+                  .toList()
+              : [];
           _loadingUsers = false;
         });
       } else {
         setState(() => _loadingUsers = false);
+        _showSnack('Không thể tải danh sách người dùng', error: true);
       }
     } catch (_) {
+      if (!mounted) return;
       setState(() => _loadingUsers = false);
+      _showSnack('Lỗi kết nối khi tải người dùng', error: true);
     }
   }
 
-  // ==================== NGƯỜI DÙNG ====================
-  void _showAddUserDialog() {
-    final nameCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
+  Future<bool> _createUser({
+    required String fullName,
+    required String email,
+    required String password,
+    required String phone,
+    required String role,
+    required bool isActive,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/admin/users'),
+        headers: await _headers(),
+        body: jsonEncode({
+          'fullName': fullName.trim(),
+          'email': email.trim(),
+          'password': password,
+          'phone': phone.trim(),
+          'role': role,
+          'isActive': isActive,
+        }),
+      );
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Thêm người dùng mới'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Họ và tên'),
-            ),
-            TextField(
-              controller: emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-            TextField(
-              controller: passCtrl,
-              decoration: const InputDecoration(labelText: 'Mật khẩu'),
-              obscureText: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã thêm người dùng')),
-              );
-              _loadUsers();
-            },
-            child: const Text('Thêm', style: TextStyle(color: Colors.green)),
-          ),
-        ],
-      ),
-    );
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        _showSnack('Thêm người dùng thành công');
+        await _loadUsers();
+        await _loadStats();
+        return true;
+      }
+
+      _showSnack(_errorMessage(res, 'Không thể thêm người dùng'), error: true);
+      return false;
+    } catch (_) {
+      _showSnack('Không thể thêm người dùng', error: true);
+      return false;
+    }
   }
 
-  void _showEditUserDialog(_UserModel user) {
-    final nameCtrl = TextEditingController(text: user.fullName);
-    final emailCtrl = TextEditingController(text: user.email);
+  Future<bool> _updateUser({
+    required _UserModel user,
+    required String fullName,
+    required String email,
+    required String phone,
+    required String role,
+    required bool isActive,
+  }) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$_baseUrl/api/admin/users/${user.id}'),
+        headers: await _headers(),
+        body: jsonEncode({
+          'fullName': fullName.trim(),
+          'email': email.trim(),
+          'phone': phone.trim(),
+          'role': role,
+          'isActive': isActive,
+        }),
+      );
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sửa thông tin người dùng'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Họ và tên'),
-            ),
-            TextField(
-              controller: emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã cập nhật thông tin')),
-              );
-              _loadUsers();
-            },
-            child: const Text('Lưu', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
-      ),
-    );
+      if (res.statusCode == 200) {
+        _showSnack('Cập nhật người dùng thành công');
+        await _loadUsers();
+        await _loadStats();
+        return true;
+      }
+
+      _showSnack(
+        _errorMessage(res, 'Không thể cập nhật người dùng'),
+        error: true,
+      );
+      return false;
+    } catch (_) {
+      _showSnack('Không thể cập nhật người dùng', error: true);
+      return false;
+    }
   }
 
   Future<void> _deleteUser(_UserModel user) async {
@@ -218,7 +278,7 @@ class _AdminScreenState extends State<AdminScreen>
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Xóa người dùng?'),
-        content: Text('Bạn có chắc muốn xóa "${user.fullName}"?'),
+        content: Text('Bạn có chắc muốn xóa "${user.fullName}" không?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -231,31 +291,354 @@ class _AdminScreenState extends State<AdminScreen>
         ],
       ),
     );
+
     if (ok != true) return;
 
     try {
-      final token = await _token();
       final res = await http.delete(
         Uri.parse('$_baseUrl/api/admin/users/${user.id}'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: await _headers(),
       );
+
       if (res.statusCode == 200) {
-        setState(() => _users.remove(user));
-        ScaffoldMessenger.of(
-          // ignore: use_build_context_synchronously
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Đã xóa thành công')));
-        _loadStats();
+        _showSnack('Đã xóa người dùng');
+        await _loadUsers();
+        await _loadStats();
+      } else {
+        _showSnack(_errorMessage(res, 'Không thể xóa người dùng'), error: true);
       }
     } catch (_) {
-      ScaffoldMessenger.of(
-        // ignore: use_build_context_synchronously
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Lỗi kết nối')));
+      _showSnack('Không thể xóa người dùng', error: true);
     }
   }
 
-  // ==================== DỮ LIỆU HỆ THỐNG ====================
+  Future<void> _showAddUserDialog() async {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+
+    String role = 'user';
+    bool isActive = true;
+    bool submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !submitting,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              if (!(formKey.currentState?.validate() ?? false)) return;
+
+              setDialogState(() => submitting = true);
+
+              final success = await _createUser(
+                fullName: nameCtrl.text,
+                email: emailCtrl.text,
+                password: passCtrl.text,
+                phone: phoneCtrl.text,
+                role: role,
+                isActive: isActive,
+              );
+
+              if (!dialogContext.mounted) return;
+
+              setDialogState(() => submitting = false);
+
+              if (success) Navigator.pop(dialogContext);
+            }
+
+            return AlertDialog(
+              title: const Text('Thêm người dùng'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameCtrl,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Họ và tên',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Vui lòng nhập họ tên';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Email / tài khoản',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Vui lòng nhập email';
+                          if (!value.contains('@')) {
+                            return 'Email không đúng định dạng';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: passCtrl,
+                        obscureText: true,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Mật khẩu',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (v) {
+                          final value = v ?? '';
+                          if (value.isEmpty) return 'Vui lòng nhập mật khẩu';
+                          if (value.length < 6) {
+                            return 'Mật khẩu tối thiểu 6 ký tự';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(
+                          labelText: 'Số điện thoại',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) {
+                            return 'Vui lòng nhập số điện thoại';
+                          }
+                          if (value.length < 9) {
+                            return 'Số điện thoại không hợp lệ';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        value: role,
+                        decoration: const InputDecoration(
+                          labelText: 'Vai trò',
+                          prefixIcon: Icon(Icons.verified_user_outlined),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'user', child: Text('User')),
+                          DropdownMenuItem(
+                            value: 'admin',
+                            child: Text('Admin'),
+                          ),
+                        ],
+                        onChanged: submitting
+                            ? null
+                            : (v) => setDialogState(() => role = v ?? 'user'),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: isActive,
+                        title: const Text('Tài khoản hoạt động'),
+                        onChanged: submitting
+                            ? null
+                            : (v) => setDialogState(() => isActive = v),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      submitting ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton.icon(
+                  onPressed: submitting ? null : submit,
+                  icon: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.person_add_alt_1),
+                  label: const Text('Thêm người dùng'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    passCtrl.dispose();
+    phoneCtrl.dispose();
+  }
+
+  Future<void> _showEditUserDialog(_UserModel user) async {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController(text: user.fullName);
+    final emailCtrl = TextEditingController(text: user.email);
+    final phoneCtrl = TextEditingController(text: user.phone);
+
+    String role = user.role;
+    bool isActive = user.isActive;
+    bool submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !submitting,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              if (!(formKey.currentState?.validate() ?? false)) return;
+
+              setDialogState(() => submitting = true);
+
+              final success = await _updateUser(
+                user: user,
+                fullName: nameCtrl.text,
+                email: emailCtrl.text,
+                phone: phoneCtrl.text,
+                role: role,
+                isActive: isActive,
+              );
+
+              if (!dialogContext.mounted) return;
+
+              setDialogState(() => submitting = false);
+
+              if (success) Navigator.pop(dialogContext);
+            }
+
+            return AlertDialog(
+              title: const Text('Sửa người dùng'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Họ và tên',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Vui lòng nhập họ tên';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Vui lòng nhập email';
+                          if (!value.contains('@')) {
+                            return 'Email không đúng định dạng';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Số điện thoại',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        value: role == 'admin' ? 'admin' : 'user',
+                        decoration: const InputDecoration(
+                          labelText: 'Vai trò',
+                          prefixIcon: Icon(Icons.verified_user_outlined),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'user', child: Text('User')),
+                          DropdownMenuItem(
+                            value: 'admin',
+                            child: Text('Admin'),
+                          ),
+                        ],
+                        onChanged: submitting
+                            ? null
+                            : (v) => setDialogState(() => role = v ?? 'user'),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: isActive,
+                        title: const Text('Tài khoản hoạt động'),
+                        onChanged: submitting
+                            ? null
+                            : (v) => setDialogState(() => isActive = v),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      submitting ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton.icon(
+                  onPressed: submitting ? null : submit,
+                  icon: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: const Text('Lưu'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    phoneCtrl.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+      _search = value;
+      _loadUsers();
+    });
+  }
+
   void _showAddDataDialog(String title) {
     final tenCtrl = TextEditingController();
     final moTaCtrl = TextEditingController();
@@ -287,20 +670,22 @@ class _AdminScreenState extends State<AdminScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('Đã thêm $title')));
+              _showSnack('Đã thêm $title');
+              _loadStats();
             },
             child: const Text('Thêm', style: TextStyle(color: Colors.green)),
           ),
         ],
       ),
-    );
+    ).whenComplete(() {
+      tenCtrl.dispose();
+      moTaCtrl.dispose();
+    });
   }
 
   void _showEditDataDialog(String title) {
-    final tenCtrl = TextEditingController(text: "Tên mẫu $title");
-    final moTaCtrl = TextEditingController(text: "Mô tả mẫu...");
+    final tenCtrl = TextEditingController(text: 'Tên mẫu $title');
+    final moTaCtrl = TextEditingController(text: 'Mô tả mẫu...');
 
     showDialog(
       context: context,
@@ -329,15 +714,17 @@ class _AdminScreenState extends State<AdminScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('Đã cập nhật $title')));
+              _showSnack('Đã cập nhật $title');
+              _loadStats();
             },
             child: const Text('Lưu', style: TextStyle(color: Colors.blue)),
           ),
         ],
       ),
-    );
+    ).whenComplete(() {
+      tenCtrl.dispose();
+      moTaCtrl.dispose();
+    });
   }
 
   Future<void> _deleteData(String type, String label) async {
@@ -358,26 +745,23 @@ class _AdminScreenState extends State<AdminScreen>
         ],
       ),
     );
+
     if (ok != true) return;
 
     try {
-      final token = await _token();
       final res = await http.delete(
         Uri.parse('$_baseUrl/api/admin/data/$type'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: await _headers(),
       );
+
       if (res.statusCode == 200) {
-        ScaffoldMessenger.of(
-          // ignore: use_build_context_synchronously
-          context,
-        ).showSnackBar(SnackBar(content: Text('Đã xóa $label')));
+        _showSnack('Đã xóa $label');
         _loadStats();
+      } else {
+        _showSnack(_errorMessage(res, 'Không thể xóa dữ liệu'), error: true);
       }
     } catch (_) {
-      ScaffoldMessenger.of(
-        // ignore: use_build_context_synchronously
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Lỗi kết nối')));
+      _showSnack('Không thể xóa dữ liệu', error: true);
     }
   }
 
@@ -416,7 +800,11 @@ class _AdminScreenState extends State<AdminScreen>
             Expanded(
               child: TabBarView(
                 controller: _tab,
-                children: [_buildStatsTab(), _buildUsersTab(), _buildDataTab()],
+                children: [
+                  _buildStatsTab(),
+                  _buildUsersTab(),
+                  _buildDataTab(),
+                ],
               ),
             ),
           ],
@@ -472,23 +860,16 @@ class _AdminScreenState extends State<AdminScreen>
               ],
             ),
           ),
-          GestureDetector(
-            onTap: () {
+          IconButton.filledTonal(
+            style: IconButton.styleFrom(backgroundColor: Colors.white),
+            onPressed: () {
               _loadStats();
               _loadUsers();
             },
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _C.border),
-              ),
-              child: const Icon(
-                Icons.refresh_rounded,
-                color: _C.purple400,
-                size: 20,
-              ),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: _C.purple400,
+              size: 20,
             ),
           ),
         ],
@@ -542,32 +923,36 @@ class _AdminScreenState extends State<AdminScreen>
       ),
     ];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Tổng quan hệ thống',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: _C.textMain,
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tổng quan hệ thống',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _C.textMain,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 2.3,
-            children: cards
-                .map((c) => _smallStatCard(c.$1, c.$2, c.$3, c.$4))
-                .toList(),
-          ),
-        ],
+            const SizedBox(height: 12),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 2.3,
+              children: cards
+                  .map((c) => _smallStatCard(c.$1, c.$2, c.$3, c.$4))
+                  .toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -590,7 +975,6 @@ class _AdminScreenState extends State<AdminScreen>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              // ignore: deprecated_member_use
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -599,10 +983,13 @@ class _AdminScreenState extends State<AdminScreen>
           const SizedBox(width: 12),
           Expanded(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -611,6 +998,8 @@ class _AdminScreenState extends State<AdminScreen>
                 ),
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: _C.textSub),
                 ),
               ],
@@ -631,18 +1020,30 @@ class _AdminScreenState extends State<AdminScreen>
               Expanded(
                 child: TextField(
                   controller: _searchCtrl,
-                  onChanged: (v) {
-                    _search = v;
-                    _loadUsers();
-                  },
+                  onChanged: _onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'Tìm kiếm theo tên hoặc email...',
                     prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    suffixIcon: _searchCtrl.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              _search = '';
+                              _loadUsers();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
                     filled: true,
                     fillColor: _C.card,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: _C.border),
+                      borderSide: const BorderSide(color: _C.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: _C.border),
                     ),
                   ),
                 ),
@@ -663,11 +1064,14 @@ class _AdminScreenState extends State<AdminScreen>
                 )
               : _users.isEmpty
                   ? const Center(child: Text('Không tìm thấy người dùng'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      itemCount: _users.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) => _buildUserCard(_users[i]),
+                  : RefreshIndicator(
+                      onRefresh: _loadUsers,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        itemCount: _users.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) => _buildUserCard(_users[i]),
+                      ),
                     ),
         ),
       ],
@@ -676,6 +1080,7 @@ class _AdminScreenState extends State<AdminScreen>
 
   Widget _buildUserCard(_UserModel user) {
     final isAdmin = user.role == 'admin';
+
     return Container(
       decoration: BoxDecoration(
         color: _C.card,
@@ -710,6 +1115,8 @@ class _AdminScreenState extends State<AdminScreen>
                     Flexible(
                       child: Text(
                         user.fullName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -739,8 +1146,17 @@ class _AdminScreenState extends State<AdminScreen>
                 ),
                 Text(
                   user.email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11, color: _C.textSub),
                 ),
+                if (user.phone.isNotEmpty)
+                  Text(
+                    user.phone,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: _C.textSub),
+                  ),
                 Text(
                   user.isActive ? 'Đang hoạt động' : 'Đã bị khóa',
                   style: TextStyle(
@@ -751,24 +1167,24 @@ class _AdminScreenState extends State<AdminScreen>
               ],
             ),
           ),
-          if (!isAdmin) ...[
-            IconButton(
-              icon: const Icon(
-                Icons.edit_outlined,
-                color: Colors.blue,
-                size: 20,
-              ),
-              onPressed: () => _showEditUserDialog(user),
+          IconButton(
+            tooltip: 'Sửa người dùng',
+            icon: const Icon(
+              Icons.edit_outlined,
+              color: Colors.blue,
+              size: 20,
             ),
-            IconButton(
-              icon: const Icon(
-                Icons.delete_outline_rounded,
-                color: Colors.redAccent,
-                size: 20,
-              ),
-              onPressed: () => _deleteUser(user),
+            onPressed: () => _showEditUserDialog(user),
+          ),
+          IconButton(
+            tooltip: 'Xóa người dùng',
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              color: Colors.redAccent,
+              size: 20,
             ),
-          ],
+            onPressed: () => _deleteUser(user),
+          ),
         ],
       ),
     );
@@ -862,14 +1278,17 @@ class _AdminScreenState extends State<AdminScreen>
             ),
           ),
           IconButton(
+            tooltip: 'Thêm dữ liệu',
             icon: const Icon(Icons.add, color: Colors.green, size: 22),
             onPressed: () => _showAddDataDialog(title),
           ),
           IconButton(
+            tooltip: 'Sửa dữ liệu',
             icon: const Icon(Icons.edit_outlined, color: Colors.blue, size: 22),
             onPressed: () => _showEditDataDialog(title),
           ),
           IconButton(
+            tooltip: 'Xóa dữ liệu',
             icon: const Icon(
               Icons.delete_outline_rounded,
               color: Colors.redAccent,

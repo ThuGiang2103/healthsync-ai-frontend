@@ -31,13 +31,13 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _nameCtrl = TextEditingController(text: 'Tran Thu Giang');
-  final _emailCtrl = TextEditingController(text: 'thugiang@gmail.com');
-  final _phoneCtrl = TextEditingController(text: '09876322');
-  final _genderCtrl = TextEditingController(text: 'Nu');
-  final _heightCtrl = TextEditingController(text: '154');
-  final _weightCtrl = TextEditingController(text: '58');
-  final _medCtrl = TextEditingController(text: 'Khong co benh ly nen');
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _genderCtrl = TextEditingController();
+  final _heightCtrl = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _medCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -46,13 +46,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
     final user = await AuthService.getUser();
-    if (mounted && user != null) {
-      setState(() {
-        _nameCtrl.text = user['fullName'] ?? 'Nguoi dung';
-        _emailCtrl.text = user['email'] ?? '';
-      });
-    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _nameCtrl.text =
+          prefs.getString('profile_name') ?? user?['fullName'] ?? 'Nguoi dung';
+      _emailCtrl.text =
+          prefs.getString('profile_email') ?? user?['email'] ?? '';
+      _phoneCtrl.text = prefs.getString('profile_phone') ?? '09876322';
+      _genderCtrl.text = prefs.getString('profile_gender') ?? 'Nu';
+      _heightCtrl.text = prefs.getString('profile_height') ?? '154';
+      _weightCtrl.text = prefs.getString('profile_weight') ?? '58';
+      _medCtrl.text = prefs.getString('profile_med') ?? 'Khong co benh ly nen';
+    });
+  }
+
+  Future<void> _saveProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString('profile_name', _nameCtrl.text);
+    await prefs.setString('profile_email', _emailCtrl.text);
+    await prefs.setString('profile_phone', _phoneCtrl.text);
+    await prefs.setString('profile_gender', _genderCtrl.text);
+    await prefs.setString('profile_height', _heightCtrl.text);
+    await prefs.setString('profile_weight', _weightCtrl.text);
+    await prefs.setString('profile_med', _medCtrl.text);
   }
 
   @override
@@ -69,6 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showEditDialog(String label, TextEditingController ctrl) {
     final tmp = TextEditingController(text: ctrl.text);
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -98,10 +120,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Huy', style: TextStyle(color: _C.textHint)),
           ),
           GestureDetector(
-            onTap: () {
+            onTap: () async {
               setState(() => ctrl.text = tmp.text);
-              Navigator.pop(context);
-              _showSnack('Da luu $label thanh cong');
+              await _saveProfileData();
+
+              if (context.mounted) {
+                Navigator.pop(context);
+                _showSnack('Da luu $label thanh cong');
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -145,10 +171,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Huy', style: TextStyle(color: _C.textHint)),
           ),
           GestureDetector(
-            onTap: () {
+            onTap: () async {
               setState(() => ctrl.text = '');
-              Navigator.pop(context);
-              _showSnack('Da xoa $label');
+              await _saveProfileData();
+
+              if (context.mounted) {
+                Navigator.pop(context);
+                _showSnack('Da xoa $label');
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -235,10 +265,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(
         children: [
-          CircleAvatar(
+          const CircleAvatar(
             radius: 45,
             backgroundColor: Colors.white,
-            child: const Icon(
+            child: Icon(
               Icons.person_rounded,
               size: 55,
               color: _C.pink400,
@@ -246,7 +276,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            _nameCtrl.text,
+            _nameCtrl.text.isEmpty ? 'Nguoi dung' : _nameCtrl.text,
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -254,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           Text(
-            _emailCtrl.text,
+            _emailCtrl.text.isEmpty ? '---' : _emailCtrl.text,
             style: const TextStyle(fontSize: 14, color: _C.textSub),
           ),
         ],
@@ -369,9 +399,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _C.border),
       ),
-      child: Text(
-        _medCtrl.text,
-        style: const TextStyle(fontSize: 14, color: _C.textMain),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _medCtrl.text.isEmpty ? '---' : _medCtrl.text,
+              style: const TextStyle(fontSize: 14, color: _C.textMain),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Colors.grey, size: 20),
+            onPressed: () => _showEditDialog('Benh ly nen', _medCtrl),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              color: Colors.redAccent,
+              size: 20,
+            ),
+            onPressed: () => _deleteField('Benh ly nen', _medCtrl),
+          ),
+        ],
       ),
     );
   }
@@ -561,9 +609,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () async {
               Navigator.pop(context);
               await AuthService.logout();
+
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(
-                  // ignore: use_build_context_synchronously
                   context,
                   '/login',
                   (r) => false,
@@ -611,10 +659,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           GestureDetector(
             onTap: () async {
               Navigator.pop(context);
+
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('profile_name');
+              await prefs.remove('profile_email');
+              await prefs.remove('profile_phone');
+              await prefs.remove('profile_gender');
+              await prefs.remove('profile_height');
+              await prefs.remove('profile_weight');
+              await prefs.remove('profile_med');
+
               await AuthService.logout();
+
               if (context.mounted) {
                 Navigator.pushNamedAndRemoveUntil(
-                  // ignore: use_build_context_synchronously
                   context,
                   '/login',
                   (r) => false,
