@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 
@@ -32,63 +31,50 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     final email = _emailCtrl.text.trim();
-    final password = _passwordCtrl.text;
+    final password = _passwordCtrl.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      _showSnack('Vui lòng nhập đầy đủ thông tin', isError: true);
+      _showSnack('Vui lòng nhập email và mật khẩu', isError: true);
       return;
     }
 
     setState(() => _isLoading = true);
 
-    final result = await ApiService.login(
-      email: email,
-      password: password,
-    );
+    try {
+      final result = await ApiService.login(email: email, password: password);
 
-    if (mounted) {
-      setState(() => _isLoading = false);
+      debugPrint('🔍=== LOGIN RESULT ===');
+      debugPrint(result.toString());
+
+      if (ApiService.hasToken(result)) {
+        String token = result['token'] ??
+            result['accessToken'] ??
+            result['data']?['token'] ??
+            '';
+
+        await AuthService.saveToken(token);
+
+        if (result['user'] != null) {
+          await AuthService.saveUserData(result['user']);
+        }
+
+        if (!mounted) return;
+
+        _showSnack('Đăng nhập thành công!', isError: false);
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        String errorMsg = result['message'] ??
+            result['error'] ??
+            'Email hoặc mật khẩu không đúng';
+        debugPrint('❌ Lỗi: $errorMsg');
+        _showSnack(errorMsg, isError: true);
+      }
+    } catch (e) {
+      debugPrint('🚨 EXCEPTION: $e');
+      _showSnack('Lỗi kết nối server', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    if (!mounted) return;
-
-    if (result['error'] != null) {
-      _showSnack('${result['error']}', isError: true);
-      return;
-    }
-
-    final token = '${result['token'] ?? ''}';
-    final rawUser = result['user'];
-
-    debugPrint('LOGIN RESULT: $result');
-    debugPrint('LOGIN TOKEN: $token');
-    debugPrint('LOGIN USER: $rawUser');
-
-    if (token.isEmpty) {
-      _showSnack(
-        'Đăng nhập thành công nhưng server không trả token',
-        isError: true,
-      );
-      return;
-    }
-
-    final user = rawUser is Map<String, dynamic>
-        ? rawUser
-        : Map<String, dynamic>.from(rawUser as Map);
-
-    await AuthService.saveLoginData(token, user);
-
-    final savedToken = await AuthService.getToken();
-    debugPrint('SAVED TOKEN: $savedToken');
-
-    if (!mounted) return;
-
-    if (savedToken == null || savedToken.isEmpty) {
-      _showSnack('Không lưu được token đăng nhập', isError: true);
-      return;
-    }
-
-    Navigator.pushReplacementNamed(context, '/home');
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -147,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         border: Border.all(color: _C.pink200),
                         boxShadow: [
                           BoxShadow(
-                            color: _C.pink200.withValues(alpha: 0.4),
+                            color: _C.pink200.withOpacity(0.4),
                             blurRadius: 24,
                             offset: const Offset(0, 8),
                           ),
@@ -191,8 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 size: 20,
                               ),
                               onPressed: () => setState(
-                                () => _showPassword = !_showPassword,
-                              ),
+                                  () => _showPassword = !_showPassword),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -297,10 +282,7 @@ class _LoginScreenState extends State<LoginScreen> {
       obscureText: obscure,
       keyboardType: keyboardType,
       style: const TextStyle(
-        fontSize: 14,
-        color: _C.textMain,
-        fontWeight: FontWeight.w600,
-      ),
+          fontSize: 14, color: _C.textMain, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: _C.textHint, fontSize: 13),
@@ -316,10 +298,8 @@ class _LoginScreenState extends State<LoginScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: _C.pink400, width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 16,
-          horizontal: 16,
-        ),
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       ),
     );
   }
@@ -328,48 +308,47 @@ class _LoginScreenState extends State<LoginScreen> {
     required String label,
     required VoidCallback? onTap,
     bool isLoading = false,
-  }) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          height: 52,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFE07FA8), Color(0xFFC97FD4)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFE07FA8), Color(0xFFC97FD4)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: _C.pink400.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: _C.pink400.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Center(
-            child: isLoading
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
-                    ),
-                  )
-                : Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-          ),
+          ],
         ),
-      );
+        child: Center(
+          child: isLoading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2.5),
+                )
+              : Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 
   Widget _blob(double size, Color color) => Container(
         width: size,
