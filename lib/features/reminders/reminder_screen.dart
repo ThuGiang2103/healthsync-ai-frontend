@@ -1,7 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
+
+const String _baseUrl = 'https://healthsync-ai-y60b.onrender.com';
 
 class _C {
   static const bg = Color(0xFFF2FBF6);
@@ -90,6 +97,14 @@ class _ReminderScreenState extends State<ReminderScreen> {
     _loadReminders();
   }
 
+  @override
+  void dispose() {
+    for (final reminder in _reminders) {
+      NotificationService.cancelReminder(reminder.id);
+    }
+    super.dispose();
+  }
+
   Future<void> _loadReminders() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
@@ -108,6 +123,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
         );
     }
 
+    _scheduleAllPendingReminders();
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -117,6 +134,106 @@ class _ReminderScreenState extends State<ReminderScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(_reminders.map((r) => r.toJson()).toList());
     await prefs.setString(_storageKey, raw);
+  }
+
+  DateTime _reminderDateTime(TimeOfDay time) {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, time.hour, time.minute);
+  }
+
+  DateTime? _reminderDateTimeFromString(String time) {
+    final parsed = _parseTime(time);
+    if (parsed == null) return null;
+    return _reminderDateTime(parsed);
+  }
+
+  void _scheduleAllPendingReminders() {
+    for (final reminder in _reminders) {
+      if (!reminder.done) {
+        _scheduleLocalReminder(reminder);
+      }
+    }
+  }
+
+  void _scheduleLocalReminder(_Reminder reminder) {
+    final scheduledTime = _reminderDateTimeFromString(reminder.time);
+    if (scheduledTime == null) return;
+
+    if (scheduledTime.isBefore(DateTime.now())) return;
+
+    NotificationService.scheduleReminder(
+      id: reminder.id,
+      title: reminder.name,
+      body: reminder.desc.isEmpty ? 'Đã đến giờ nhắc lịch' : reminder.desc,
+      scheduledTime: scheduledTime,
+      onTrigger: () {
+        if (!mounted) return;
+
+        showDialog<void>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(reminder.name),
+            content: Text(
+              reminder.desc.isEmpty ? 'Đã đến giờ nhắc lịch' : reminder.desc,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Để sau'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _markReminderDone(reminder);
+                },
+                child: const Text('Đã thực hiện'),
+              ),
+            ],
+          ),
+        );
+
+        _showMessage('Đã đến giờ: ${reminder.name}');
+      },
+    );
+  }
+
+  Future<bool> _saveReminderToApi({
+    required String title,
+    required String description,
+    required TimeOfDay time,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+
+      if (token == null || token.isEmpty) {
+        _showMessage('Không có token đăng nhập');
+        return false;
+      }
+
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/reminders'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'title': title,
+          'description': description,
+          'reminderTime': _reminderDateTime(time).toIso8601String(),
+          'repeatType': 'none',
+        }),
+      );
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return true;
+      }
+
+      _showMessage('Lỗi server ${res.statusCode}: ${res.body}');
+      return false;
+    } catch (e) {
+      _showMessage('Lỗi kết nối: $e');
+      return false;
+    }
   }
 
   List<_Reminder> _defaultReminders() {
@@ -175,6 +292,36 @@ class _ReminderScreenState extends State<ReminderScreen> {
     return h * 60 + m;
   }
 
+  String _statusText(_Reminder reminder) {
+    if (reminder.done) return 'Đã xong';
+
+    final scheduled = _reminderDateTimeFromString(reminder.time);
+    if (scheduled == null) return 'Sắp tới';
+
+    final diff = scheduled.difference(DateTime.now()).inMinutes;
+
+    if (diff > 0) return 'Sắp tới';
+    if (diff >= -5) return 'Đến giờ';
+    return 'Quá giờ';
+  }
+
+  Color _statusColor(String status) {
+    if (status == 'Đã xong') return _C.mint700;
+    if (status == 'Đến giờ') return _C.amber4;
+    if (status == 'Quá giờ') return _C.red400;
+    return _C.mint700;
+  }
+
+  Future<void> _markReminderDone(_Reminder reminder) async {
+    setState(() {
+      reminder.done = true;
+      reminder.updatedAt = DateTime.now();
+    });
+
+    await NotificationService.cancelReminder(reminder.id);
+    await _saveReminders();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -210,7 +357,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
                           if (_done.isNotEmpty) ...[
                             const SizedBox(height: 16),
                             _buildSectionTitle(
-                                'Đã hoàn thành (${_done.length})'),
+                              'Đã hoàn thành (${_done.length})',
+                            ),
                             const SizedBox(height: 10),
                             ..._done.map((r) => _buildReminderCard(r)),
                           ],
@@ -264,12 +412,18 @@ class _ReminderScreenState extends State<ReminderScreen> {
     return Row(
       children: [
         _summaryChip(
-            Icons.hourglass_bottom_rounded, '${_pending.length}', 'Chưa xong'),
+          Icons.hourglass_bottom_rounded,
+          '${_pending.length}',
+          'Chưa xong',
+        ),
         const SizedBox(width: 8),
         _summaryChip(Icons.check_circle_rounded, '${_done.length}', 'Xong rồi'),
         const SizedBox(width: 8),
         _summaryChip(
-            Icons.list_alt_rounded, '${_reminders.length}', 'Tổng cộng'),
+          Icons.list_alt_rounded,
+          '${_reminders.length}',
+          'Tổng cộng',
+        ),
       ],
     );
   }
@@ -343,6 +497,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
   Widget _buildReminderCard(_Reminder reminder) {
     final style = _styleFor(reminder.emoji);
+    final status = _statusText(reminder);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -434,7 +589,16 @@ class _ReminderScreenState extends State<ReminderScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 5),
+                  Text(
+                    status,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _statusColor(status),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       _iconButton(
@@ -527,6 +691,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
       reminder.updatedAt = DateTime.now();
     });
 
+    if (reminder.done) {
+      await NotificationService.cancelReminder(reminder.id);
+    } else {
+      _scheduleLocalReminder(reminder);
+    }
+
     await _saveReminders();
   }
 
@@ -546,28 +716,39 @@ class _ReminderScreenState extends State<ReminderScreen> {
       selectedTime: selectedTime,
       onSave: (emoji, time) async {
         final name = nameCtrl.text.trim();
+        final desc = descCtrl.text.trim();
 
         if (name.isEmpty) {
           _showMessage('Vui lòng nhập tên nhắc nhở');
           return;
         }
 
+        final savedToServer = await _saveReminderToApi(
+          title: name,
+          description: desc,
+          time: time,
+        );
+
+        if (!savedToServer) return;
+
+        final reminder = _Reminder(
+          id: DateTime.now().millisecondsSinceEpoch,
+          emoji: emoji,
+          name: name,
+          desc: desc,
+          time: _formatTime(time),
+          updatedAt: DateTime.now(),
+        );
+
         setState(() {
-          _reminders.add(
-            _Reminder(
-              id: DateTime.now().millisecondsSinceEpoch,
-              emoji: emoji,
-              name: name,
-              desc: descCtrl.text.trim(),
-              time: _formatTime(time),
-              updatedAt: DateTime.now(),
-            ),
-          );
+          _reminders.add(reminder);
         });
 
         await _saveReminders();
+        _scheduleLocalReminder(reminder);
 
         if (mounted) {
+          _showMessage('Đã lưu nhắc nhở');
           Navigator.pop(context);
         }
       },
@@ -591,23 +772,31 @@ class _ReminderScreenState extends State<ReminderScreen> {
       selectedTime: selectedTime,
       onSave: (emoji, time) async {
         final name = nameCtrl.text.trim();
+        final desc = descCtrl.text.trim();
 
         if (name.isEmpty) {
           _showMessage('Vui lòng nhập tên nhắc nhở');
           return;
         }
 
+        await NotificationService.cancelReminder(reminder.id);
+
         setState(() {
           reminder.emoji = emoji;
           reminder.name = name;
-          reminder.desc = descCtrl.text.trim();
+          reminder.desc = desc;
           reminder.time = _formatTime(time);
           reminder.updatedAt = DateTime.now();
         });
 
         await _saveReminders();
 
+        if (!reminder.done) {
+          _scheduleLocalReminder(reminder);
+        }
+
         if (mounted) {
+          _showMessage('Đã cập nhật nhắc nhở');
           Navigator.pop(context);
         }
       },
@@ -807,6 +996,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
     );
 
     if (shouldDelete != true) return;
+
+    await NotificationService.cancelReminder(reminder.id);
 
     setState(() {
       _reminders.removeWhere((r) => r.id == reminder.id);

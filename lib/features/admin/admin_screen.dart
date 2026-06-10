@@ -220,16 +220,16 @@ class _AdminScreenState extends State<AdminScreen>
       );
 
       if (res.statusCode == 200 || res.statusCode == 201) {
-        _showSnack('Thêm người dùng thành công');
-        await _loadUsers();
-        await _loadStats();
         return true;
       }
 
-      _showSnack(_errorMessage(res, 'Không thể thêm người dùng'), error: true);
+      _showSnack(
+        '${res.statusCode}: ${_errorMessage(res, 'Không thể thêm người dùng')}',
+        error: true,
+      );
       return false;
-    } catch (_) {
-      _showSnack('Không thể thêm người dùng', error: true);
+    } catch (e) {
+      _showSnack('Không thể thêm người dùng: $e', error: true);
       return false;
     }
   }
@@ -323,13 +323,13 @@ class _AdminScreenState extends State<AdminScreen>
     bool isActive = true;
     bool submitting = false;
 
-    await showDialog<void>(
+    final added = await showDialog<bool>(
       context: context,
-      barrierDismissible: !submitting,
+      barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            Future<void> submit() async {
+            Future<void> submitAdd() async {
               if (!(formKey.currentState?.validate() ?? false)) return;
 
               setDialogState(() => submitting = true);
@@ -345,9 +345,12 @@ class _AdminScreenState extends State<AdminScreen>
 
               if (!dialogContext.mounted) return;
 
-              setDialogState(() => submitting = false);
+              if (success) {
+                Navigator.of(dialogContext).pop(true);
+                return;
+              }
 
-              if (success) Navigator.pop(dialogContext);
+              setDialogState(() => submitting = false);
             }
 
             return AlertDialog(
@@ -430,7 +433,7 @@ class _AdminScreenState extends State<AdminScreen>
                       ),
                       const SizedBox(height: 10),
                       DropdownButtonFormField<String>(
-                        value: role,
+                        initialValue: role,
                         decoration: const InputDecoration(
                           labelText: 'Vai trò',
                           prefixIcon: Icon(Icons.verified_user_outlined),
@@ -438,9 +441,7 @@ class _AdminScreenState extends State<AdminScreen>
                         items: const [
                           DropdownMenuItem(value: 'user', child: Text('User')),
                           DropdownMenuItem(
-                            value: 'admin',
-                            child: Text('Admin'),
-                          ),
+                              value: 'admin', child: Text('Admin')),
                         ],
                         onChanged: submitting
                             ? null
@@ -460,12 +461,15 @@ class _AdminScreenState extends State<AdminScreen>
               ),
               actions: [
                 TextButton(
-                  onPressed:
-                      submitting ? null : () => Navigator.pop(dialogContext),
+                  onPressed: submitting
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop(false);
+                        },
                   child: const Text('Hủy'),
                 ),
                 FilledButton.icon(
-                  onPressed: submitting ? null : submit,
+                  onPressed: submitting ? null : submitAdd,
                   icon: submitting
                       ? const SizedBox(
                           width: 16,
@@ -486,6 +490,12 @@ class _AdminScreenState extends State<AdminScreen>
     emailCtrl.dispose();
     passCtrl.dispose();
     phoneCtrl.dispose();
+
+    if (added == true && mounted) {
+      _showSnack('Thêm người dùng thành công');
+      await _loadUsers();
+      await _loadStats();
+    }
   }
 
   Future<void> _showEditUserDialog(_UserModel user) async {
@@ -494,7 +504,7 @@ class _AdminScreenState extends State<AdminScreen>
     final emailCtrl = TextEditingController(text: user.email);
     final phoneCtrl = TextEditingController(text: user.phone);
 
-    String role = user.role;
+    String role = user.role == 'admin' ? 'admin' : 'user';
     bool isActive = user.isActive;
     bool submitting = false;
 
@@ -504,7 +514,7 @@ class _AdminScreenState extends State<AdminScreen>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            Future<void> submit() async {
+            Future<void> submitEdit() async {
               if (!(formKey.currentState?.validate() ?? false)) return;
 
               setDialogState(() => submitting = true);
@@ -520,9 +530,18 @@ class _AdminScreenState extends State<AdminScreen>
 
               if (!dialogContext.mounted) return;
 
-              setDialogState(() => submitting = false);
+              if (success) {
+                Navigator.of(dialogContext).pop();
 
-              if (success) Navigator.pop(dialogContext);
+                Future.microtask(() async {
+                  await _loadUsers();
+                  await _loadStats();
+                });
+
+                return;
+              }
+
+              setDialogState(() => submitting = false);
             }
 
             return AlertDialog(
@@ -574,7 +593,7 @@ class _AdminScreenState extends State<AdminScreen>
                       ),
                       const SizedBox(height: 10),
                       DropdownButtonFormField<String>(
-                        value: role == 'admin' ? 'admin' : 'user',
+                        initialValue: role,
                         decoration: const InputDecoration(
                           labelText: 'Vai trò',
                           prefixIcon: Icon(Icons.verified_user_outlined),
@@ -582,9 +601,7 @@ class _AdminScreenState extends State<AdminScreen>
                         items: const [
                           DropdownMenuItem(value: 'user', child: Text('User')),
                           DropdownMenuItem(
-                            value: 'admin',
-                            child: Text('Admin'),
-                          ),
+                              value: 'admin', child: Text('Admin')),
                         ],
                         onChanged: submitting
                             ? null
@@ -604,12 +621,15 @@ class _AdminScreenState extends State<AdminScreen>
               ),
               actions: [
                 TextButton(
-                  onPressed:
-                      submitting ? null : () => Navigator.pop(dialogContext),
+                  onPressed: submitting
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                        },
                   child: const Text('Hủy'),
                 ),
                 FilledButton.icon(
-                  onPressed: submitting ? null : submit,
+                  onPressed: submitting ? null : submitEdit,
                   icon: submitting
                       ? const SizedBox(
                           width: 16,
@@ -1212,24 +1232,34 @@ class _AdminScreenState extends State<AdminScreen>
       ),
     ];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quản lý dữ liệu hệ thống',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: _C.textMain,
+    if (_loadingStats) {
+      return const Center(
+        child: CircularProgressIndicator(color: _C.purple400),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Quản lý dữ liệu hệ thống',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _C.textMain,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          ...dataItems.map(
-            (item) => _buildDataCard(item.$1, item.$2, item.$3, item.$4),
-          ),
-        ],
+            const SizedBox(height: 12),
+            ...dataItems.map(
+              (item) => _buildDataCard(item.$1, item.$2, item.$3, item.$4),
+            ),
+          ],
+        ),
       ),
     );
   }

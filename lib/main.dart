@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+
 import 'features/auth/login_screen.dart';
-import 'features/auth/register_screen.dart';   // ← Thêm dòng này
+import 'features/auth/register_screen.dart';
 import 'features/home/home_screen.dart';
 import 'services/auth_service.dart';
+import 'services/notification_service.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.init();
+
   runApp(const MyApp());
 }
 
@@ -14,7 +19,7 @@ class MyApp extends StatelessWidget {
 
   Future<String> _getInitialRoute() async {
     final token = await AuthService.getToken();
-    return token != null ? '/home' : '/login';
+    return token != null && token.isNotEmpty ? '/home' : '/login';
   }
 
   @override
@@ -34,8 +39,9 @@ class MyApp extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          return snapshot.data == '/home' 
-              ? const HomeScreen() 
+
+          return snapshot.data == '/home'
+              ? const HomeScreen()
               : const LoginScreen();
         },
       ),

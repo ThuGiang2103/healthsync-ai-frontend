@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/auth_service.dart';
+
+const String _baseUrl = 'https://healthsync-ai-y60b.onrender.com';
+
 class _C {
   static const bg = Color(0xFFF5F0FD);
   static const border = Color(0xFFE6D8F8);
@@ -48,6 +52,7 @@ class _Message {
 
 class _ChatSession {
   final String id;
+  String? serverId;
   String title;
   List<_Message> messages;
   DateTime updatedAt;
@@ -57,11 +62,13 @@ class _ChatSession {
     required this.title,
     required this.messages,
     required this.updatedAt,
+    this.serverId,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'serverId': serverId,
       'title': title,
       'messages': messages.map((e) => e.toJson()).toList(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -74,6 +81,7 @@ class _ChatSession {
     return _ChatSession(
       id: json['id'] as String? ??
           DateTime.now().millisecondsSinceEpoch.toString(),
+      serverId: json['serverId'] as String?,
       title: json['title'] as String? ?? 'Cuộc trò chuyện',
       messages: msgsJson
           .map((e) => _Message.fromJson(e as Map<String, dynamic>))
@@ -159,6 +167,61 @@ class _ChatScreenState extends State<ChatScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(_sessions.map((e) => e.toJson()).toList());
     await prefs.setString(_storageKey, raw);
+  }
+
+  Future<String?> _createChatSessionApi() async {
+    try {
+      final token = await AuthService.getToken();
+
+      if (token == null || token.isEmpty) {
+        _showSnack('Không có token đăng nhập');
+        return null;
+      }
+
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/chat/session'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final data = jsonDecode(res.body);
+        return '${data['id']}';
+      }
+
+      _showSnack('Lỗi tạo phiên chat ${res.statusCode}: ${res.body}');
+      return null;
+    } catch (e) {
+      _showSnack('Lỗi kết nối chat: $e');
+      return null;
+    }
+  }
+
+  Future<void> _saveChatMessageApi({
+    required String sessionId,
+    required String content,
+    required String sender,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+
+      if (token == null || token.isEmpty) return;
+
+      await http.post(
+        Uri.parse('$_baseUrl/api/chat/message'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'sessionId': sessionId,
+          'content': content,
+          'sender': sender,
+        }),
+      );
+    } catch (_) {}
   }
 
   void _sortSessions() {
@@ -252,6 +315,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (content.isEmpty || session == null || _isLoading) return;
 
+    if (session.serverId == null) {
+      final serverId = await _createChatSessionApi();
+
+      if (serverId == null) {
+        return;
+      }
+
+      session.serverId = serverId;
+      await _saveSessions();
+    }
+
     final now = DateTime.now();
 
     setState(() {
@@ -272,6 +346,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _ctrl.clear();
     await _saveSessions();
+
+    await _saveChatMessageApi(
+      sessionId: session.serverId!,
+      content: content,
+      sender: 'user',
+    );
+
     _scrollToBottom();
 
     final reply = await _getGeminiResponse(content);
@@ -286,6 +367,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _sortSessions();
       _isLoading = false;
     });
+
+    await _saveChatMessageApi(
+      sessionId: session.serverId!,
+      content: reply,
+      sender: 'ai',
+    );
 
     await _saveSessions();
     _scrollToBottom();
@@ -316,6 +403,14 @@ class _ChatScreenState extends State<ChatScreen> {
     final h = time.hour.toString().padLeft(2, '0');
     final m = time.minute.toString().padLeft(2, '0');
     return '$h:$m';
+  }
+
+  void _showSnack(String text) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text)),
+    );
   }
 
   @override

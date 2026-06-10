@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/auth_service.dart';
 import 'health_stats_screen.dart';
 
 class _C {
@@ -31,6 +33,8 @@ class _C {
   static const red100 = Color(0xFFFFE5E5);
   static const red400 = Color(0xFFE84D4D);
 }
+
+const String _baseUrl = 'https://healthsync-ai-y60b.onrender.com';
 
 class _Metric {
   final int id;
@@ -181,6 +185,64 @@ class _HealthMetricsScreenState extends State<HealthMetricsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(_metrics.map((e) => e.toJson()).toList());
     await prefs.setString(_metricsStorageKey, raw);
+  }
+
+  Future<bool> _saveMetricToApi({
+    required String type,
+    required String value,
+    required String unit,
+    required DateTime recordedAt,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+
+      if (token == null || token.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không có token đăng nhập')),
+          );
+        }
+        return false;
+      }
+
+      final metricValue = type == 'huyetap'
+          ? value.split('/').first.trim()
+          : value.replaceAll(',', '.');
+
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/metrics'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'metricType': type,
+          'value': metricValue,
+          'unit': unit,
+          'recordedAt': recordedAt.toIso8601String(),
+          'note': type == 'huyetap' ? 'Huyết áp: $value $unit' : null,
+        }),
+      );
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return true;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi server ${res.statusCode}: ${res.body}')),
+        );
+      }
+
+      return false;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi kết nối: $e')),
+        );
+      }
+      return false;
+    }
   }
 
   void _sortMetrics() {
@@ -968,11 +1030,32 @@ class _HealthMetricsScreenState extends State<HealthMetricsScreen> {
                             _sortMetrics();
                             await _saveMetrics();
                             await _appendStatsEntry(
-                                selectedType, value, unit, now);
+                              selectedType,
+                              value,
+                              unit,
+                              now,
+                            );
+
+                            final savedToServer = await _saveMetricToApi(
+                              type: selectedType,
+                              value: value,
+                              unit: unit,
+                              recordedAt: now,
+                            );
 
                             if (mounted) {
                               setState(() {});
                               Navigator.pop(sheetContext);
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    savedToServer
+                                        ? 'Đã lưu chỉ số'
+                                        : 'Đã lưu trên máy, chưa lưu được lên server',
+                                  ),
+                                ),
+                              );
                             }
                           },
                           child: const Text(
@@ -990,6 +1073,10 @@ class _HealthMetricsScreenState extends State<HealthMetricsScreen> {
         );
       },
     );
+
+    nameController.dispose();
+    valueController.dispose();
+    unitController.dispose();
   }
 
   bool _isValidValue(String type, String value) {

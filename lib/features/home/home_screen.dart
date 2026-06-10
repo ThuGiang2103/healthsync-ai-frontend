@@ -8,6 +8,7 @@ import '../metrics/health_metrics_screen.dart';
 import '../reminders/reminder_screen.dart';
 import '../chat/chat_screen.dart';
 import '../profile/profile_screen.dart';
+import '../admin/admin_screen.dart';
 import '../../services/auth_service.dart';
 
 class AppColors {
@@ -38,20 +39,71 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  bool _isAdmin = false;
 
-  final List<Widget> _screens = [
-    const DashboardPage(),
-    const HealthMetricsScreen(),
-    const ReminderScreen(),
-    const ChatScreen(),
-    const ProfileScreen(),
-  ];
+  List<Widget> get _screens => [
+        const DashboardPage(),
+        const HealthMetricsScreen(),
+        const ReminderScreen(),
+        const ChatScreen(),
+        const ProfileScreen(),
+        if (_isAdmin) const AdminScreen(),
+      ];
+
+  List<BottomNavigationBarItem> get _navItems => [
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.grid_view_rounded),
+          label: 'Trang chủ',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.analytics_rounded),
+          label: 'Chỉ số',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.alarm_on_rounded),
+          label: 'Lịch nhắc',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.auto_awesome_rounded),
+          label: 'AI Chat',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.person_rounded),
+          label: 'Hồ sơ',
+        ),
+        if (_isAdmin)
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.admin_panel_settings_rounded),
+            label: 'Admin',
+          ),
+      ];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAdmin();
+  }
+
+  Future<void> _checkAdmin() async {
+    final admin = await AuthService.isAdmin();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isAdmin = admin;
+      if (_currentIndex >= _screens.length) {
+        _currentIndex = 0;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final screens = _screens;
+
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: _screens[_currentIndex],
+      body: screens[_currentIndex],
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -80,28 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
           fontWeight: FontWeight.w700,
           fontSize: 11,
         ),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'Trang chủ',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.analytics_rounded),
-            label: 'Chỉ số',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.alarm_on_rounded),
-            label: 'Lịch nhắc',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.auto_awesome_rounded),
-            label: 'AI Chat',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            label: 'Hồ sơ',
-          ),
-        ],
+        items: _navItems,
       ),
     );
   }
@@ -129,7 +160,7 @@ class _DashboardPageState extends State<DashboardPage> {
       'image':
           'https://img.pikbest.com/origin/09/24/53/8pIkbEsTzpIkbEsTN4t.png!sw800',
       'content':
-          'Tập thể dục mỗi ngày là một thói quen rất tốt cho sức khỏe cả về thể chất lẫn tinh thần. Khi cơ thể được vận động đều đặn, tim sẽ hoạt động hiệu quả hơn, máu lưu thông tốt hơn và các cơ bắp cũng trở nên linh hoạt hơn. Việc tập luyện không nhất thiết phải quá nặng, bạn có thể bắt đầu bằng những hoạt động đơn giản như đi bộ, đạp xe, tập yoga hoặc vận động nhẹ trong nhà.\n\nNgoài việc giúp kiểm soát cân nặng, tập thể dục còn hỗ trợ giảm căng thẳng, cải thiện tâm trạng và giúp bạn ngủ ngon hơn. Khi duy trì thói quen này lâu dài, cơ thể sẽ có sức đề kháng tốt hơn và giảm nguy cơ mắc các bệnh như tim mạch, tiểu đường, béo phì hay đau nhức xương khớp. Điều quan trọng là lựa chọn hình thức tập phù hợp với sức khỏe của bản thân và duy trì đều đặn mỗi ngày.',
+          'Tập thể dục mỗi ngày là một thói quen rất tốt cho sức khỏe cả về thể chất lẫn tinh thần. Khi cơ thể được vận động đều đặn, tim sẽ hoạt động hiệu quả hơn, máu lưu thông tốt hơn và các cơ bắp cũng trở nên linh hoạt hơn.',
     },
     {
       'title': 'Chạy 2 tiếng một ngày có tốt không',
@@ -137,31 +168,31 @@ class _DashboardPageState extends State<DashboardPage> {
       'image':
           'https://cdn-icons-png.magnific.com/256/12560/12560588.png?semt=ais_white_label',
       'content':
-          'Chạy bộ là một hình thức vận động rất tốt, nhưng chạy 2 tiếng mỗi ngày không phải lúc nào cũng phù hợp với tất cả mọi người. Với những người đã có nền tảng thể lực tốt, việc chạy trong thời gian dài có thể giúp tăng sức bền, cải thiện tim mạch và đốt cháy nhiều năng lượng. Tuy nhiên, nếu cơ thể chưa quen vận động hoặc mới bắt đầu tập luyện, chạy quá lâu có thể khiến cơ bắp mệt mỏi, đau khớp gối, đau cổ chân hoặc làm tăng nguy cơ chấn thương.\n\nThay vì cố gắng chạy thật lâu ngay từ đầu, bạn nên bắt đầu với thời gian ngắn hơn như 20 đến 30 phút mỗi ngày, sau đó tăng dần tùy theo khả năng của cơ thể. Trong quá trình chạy, cần chú ý khởi động kỹ, chọn giày phù hợp, uống đủ nước và dành thời gian nghỉ ngơi để cơ thể phục hồi. Một kế hoạch tập luyện hợp lý sẽ tốt hơn nhiều so với việc tập quá sức trong thời gian dài.',
+          'Chạy bộ là một hình thức vận động rất tốt, nhưng chạy 2 tiếng mỗi ngày không phải lúc nào cũng phù hợp với tất cả mọi người. Nếu mới bắt đầu, bạn nên chạy từ 20 đến 30 phút rồi tăng dần.',
     },
     {
       'title': 'Lợi ích của việc chạy bộ buổi sáng',
-      'color': Color.fromARGB(255, 220, 186, 231),
+      'color': const Color.fromARGB(255, 220, 186, 231),
       'image':
           'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQg-rfAn5GsCfq-g704MnBDkLGUR8xrJ9ZyxA&s',
       'content':
-          'Chạy bộ buổi sáng mang lại nhiều lợi ích cho sức khỏe và tinh thần. Sau một đêm nghỉ ngơi, việc vận động nhẹ vào buổi sáng giúp cơ thể tỉnh táo hơn, kích thích tuần hoàn máu và tạo cảm giác tràn đầy năng lượng cho ngày mới. Không khí buổi sáng thường mát mẻ, dễ chịu nên việc chạy bộ cũng trở nên thoải mái hơn so với những thời điểm nắng nóng trong ngày.\n\nNgoài ra, chạy bộ buổi sáng còn giúp hình thành lối sống kỷ luật và tích cực hơn. Khi duy trì thói quen này, bạn có thể cải thiện sức bền, hỗ trợ kiểm soát cân nặng và giảm căng thẳng hiệu quả. Tuy nhiên, trước khi chạy nên khởi động kỹ, không chạy quá nhanh ngay từ đầu và có thể ăn nhẹ nếu cảm thấy đói. Điều quan trọng nhất là lắng nghe cơ thể và duy trì đều đặn với cường độ phù hợp.',
+          'Chạy bộ buổi sáng giúp cơ thể tỉnh táo hơn, hỗ trợ tuần hoàn máu và tạo cảm giác năng động cho ngày mới. Bạn nên khởi động kỹ trước khi chạy.',
     },
     {
       'title': 'Ăn hoa quả mỗi ngày có tốt không',
-      'color': Color.fromARGB(255, 238, 246, 186),
+      'color': const Color.fromARGB(255, 238, 246, 186),
       'image':
           'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQvXQez6ovqJxmALdoVAEXD5P8s_tl8wspm7g&s',
       'content':
-          'Ăn hoa quả mỗi ngày rất tốt cho sức khỏe vì hoa quả cung cấp nhiều vitamin, khoáng chất, chất xơ và chất chống oxy hóa. Những dưỡng chất này giúp cơ thể tăng sức đề kháng, hỗ trợ tiêu hóa, làm đẹp da và giúp các cơ quan hoạt động tốt hơn. Một số loại quả như cam, táo, chuối, đu đủ, dưa hấu hoặc bưởi đều có thể được bổ sung vào bữa ăn hằng ngày.\n\nTuy nhiên, ăn hoa quả cũng cần có sự cân đối. Không nên ăn quá nhiều một loại quả trong thời gian dài, đặc biệt là các loại quả có lượng đường cao nếu bạn đang cần kiểm soát cân nặng hoặc đường huyết. Tốt nhất nên ăn đa dạng nhiều loại quả, ưu tiên hoa quả tươi và hạn chế nước ép đóng chai hoặc hoa quả sấy nhiều đường. Khi ăn đúng cách, hoa quả sẽ là một phần rất quan trọng trong chế độ dinh dưỡng lành mạnh.',
+          'Ăn hoa quả mỗi ngày giúp bổ sung vitamin, khoáng chất và chất xơ. Tuy nhiên, bạn nên ăn đa dạng và tránh ăn quá nhiều các loại quả có lượng đường cao.',
     },
     {
       'title': 'Thực phẩm tốt cho tim mạch',
-      'color': Color.fromARGB(255, 82, 194, 228),
+      'color': const Color.fromARGB(255, 82, 194, 228),
       'image':
           'https://png.pngtree.com/png-clipart/20210309/original/pngtree-anthropomorphic-vegetable-emoji-pack-png-image_5909439.jpg',
       'content':
-          'Một chế độ ăn uống lành mạnh có vai trò rất quan trọng trong việc bảo vệ sức khỏe tim mạch. Các thực phẩm tốt cho tim thường là những thực phẩm giàu chất xơ, vitamin, khoáng chất và chất béo tốt. Bạn có thể bổ sung rau xanh, trái cây tươi, cá béo, yến mạch, các loại hạt, đậu, dầu oliu và ngũ cốc nguyên hạt vào bữa ăn hằng ngày. Những thực phẩm này giúp hỗ trợ kiểm soát cholesterol, ổn định huyết áp và giảm nguy cơ mắc các bệnh về tim.\n\nBên cạnh việc ăn thực phẩm tốt, bạn cũng nên hạn chế các món chiên rán nhiều dầu mỡ, thức ăn nhanh, đồ ăn quá mặn và thực phẩm chế biến sẵn. Uống đủ nước, vận động đều đặn và ngủ đủ giấc cũng là những yếu tố quan trọng giúp trái tim khỏe mạnh hơn. Việc thay đổi thói quen ăn uống không cần quá đột ngột, chỉ cần bắt đầu từ những lựa chọn nhỏ nhưng duy trì lâu dài.',
+          'Rau xanh, trái cây, cá béo, yến mạch, các loại hạt và dầu oliu là những thực phẩm tốt cho tim mạch. Bạn cũng nên hạn chế đồ chiên rán và thức ăn nhanh.',
     },
     {
       'title': 'Ngủ 8 tiếng một ngày có tốt không',
@@ -169,15 +200,15 @@ class _DashboardPageState extends State<DashboardPage> {
       'image':
           'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcROhP2ZQUU1j5gyp6Fl0SP5khq_K2QkF6MwcA&s',
       'content':
-          'Ngủ đủ giấc là một trong những yếu tố quan trọng giúp cơ thể phục hồi sau một ngày học tập, làm việc và vận động. Đối với nhiều người trưởng thành, ngủ khoảng 7 đến 8 tiếng mỗi ngày là thời lượng phù hợp để cơ thể nghỉ ngơi, não bộ xử lý thông tin và hệ miễn dịch hoạt động tốt hơn. Khi ngủ đủ, bạn thường cảm thấy tỉnh táo hơn, tập trung tốt hơn và tâm trạng cũng ổn định hơn.\n\nTuy nhiên, chất lượng giấc ngủ cũng quan trọng không kém thời gian ngủ. Nếu ngủ đủ 8 tiếng nhưng thường xuyên thức giấc, ngủ muộn hoặc sử dụng điện thoại quá nhiều trước khi ngủ thì cơ thể vẫn có thể mệt mỏi. Để ngủ ngon hơn, bạn nên tạo thói quen đi ngủ đúng giờ, giữ phòng ngủ yên tĩnh, hạn chế caffeine vào buổi tối và tránh dùng thiết bị điện tử ngay trước khi ngủ.',
+          'Ngủ đủ giấc giúp cơ thể phục hồi, cải thiện trí nhớ và tăng khả năng tập trung. Với nhiều người trưởng thành, ngủ khoảng 7 đến 8 tiếng mỗi ngày là phù hợp.',
     },
     {
       'title': 'Tác hại của hút thuốc lá',
-      'color': Color.fromARGB(255, 230, 202, 167),
+      'color': const Color.fromARGB(255, 230, 202, 167),
       'image':
           'https://png.pngtree.com/png-clipart/20250109/original/pngtree-lungs-icon-design-vector-png-image_4998272.png',
       'content':
-          'Hút thuốc lá gây ra nhiều tác hại nghiêm trọng đối với sức khỏe. Khói thuốc chứa nhiều chất độc hại có thể làm tổn thương phổi, ảnh hưởng đến tim mạch và làm tăng nguy cơ mắc các bệnh nguy hiểm như viêm phế quản, bệnh phổi tắc nghẽn mạn tính, đột quỵ và ung thư phổi. Người hút thuốc thường xuyên cũng dễ bị ho kéo dài, khó thở, giảm sức bền và cơ thể nhanh mệt hơn khi vận động.\n\nKhông chỉ người hút thuốc bị ảnh hưởng, khói thuốc còn gây hại cho những người xung quanh, đặc biệt là trẻ em, phụ nữ mang thai và người có bệnh nền. Việc bỏ thuốc lá có thể khó khăn lúc đầu, nhưng mang lại lợi ích rất lớn cho sức khỏe về lâu dài. Khi ngừng hút thuốc, phổi và tim sẽ dần phục hồi, hơi thở dễ chịu hơn và nguy cơ bệnh tật cũng giảm xuống theo thời gian.',
+          'Hút thuốc lá gây hại cho phổi, tim mạch và làm tăng nguy cơ mắc nhiều bệnh nguy hiểm. Khói thuốc cũng ảnh hưởng đến người xung quanh.',
     },
   ];
 
@@ -746,6 +777,38 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  String _reminderStatus(String time, bool done) {
+    if (done) return 'Đã xong';
+
+    final parts = time.split(':');
+    if (parts.length != 2) return 'Sắp tới';
+
+    final hour = int.tryParse(parts[0]) ?? 0;
+    final minute = int.tryParse(parts[1]) ?? 0;
+
+    final now = DateTime.now();
+    final reminderTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
+
+    final diff = reminderTime.difference(now).inMinutes;
+
+    if (diff > 0) return 'Sắp tới';
+    if (diff >= -5) return 'Đến giờ';
+    return 'Quá giờ';
+  }
+
+  Color _reminderStatusColor(String status) {
+    if (status == 'Đã xong') return AppColors.mint700;
+    if (status == 'Đến giờ') return AppColors.amber400;
+    if (status == 'Quá giờ') return Colors.redAccent;
+    return AppColors.pink400;
+  }
+
   Widget _buildReminderCard(
     IconData icon,
     Color bg,
@@ -754,6 +817,8 @@ class _DashboardPageState extends State<DashboardPage> {
     String time,
     bool done,
   ) {
+    final status = _reminderStatus(time, done);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
@@ -794,11 +859,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 ],
               ),
             ),
-            const Text(
-              'Sắp tới',
+            Text(
+              status,
               style: TextStyle(
                 fontSize: 10,
-                color: AppColors.pink400,
+                color: _reminderStatusColor(status),
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -854,7 +919,50 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildAdminBanner(BuildContext context) {
-    return Container();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminScreen()),
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.purple100,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.purple400),
+          ),
+          child: const Row(
+            children: [
+              Icon(
+                Icons.admin_panel_settings_rounded,
+                color: AppColors.purple400,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Vào trang quản trị',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: AppColors.textHint,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

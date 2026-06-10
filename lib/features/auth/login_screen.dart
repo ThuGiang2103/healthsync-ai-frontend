@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 
@@ -17,6 +18,7 @@ class _C {
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -24,31 +26,69 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+
   bool _isLoading = false;
   bool _showPassword = false;
 
   Future<void> _login() async {
-    if (_emailCtrl.text.isEmpty || _passwordCtrl.text.isEmpty) {
-      _showSnack('Vui long nhap day du thong tin', isError: true);
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showSnack('Vui lòng nhập đầy đủ thông tin', isError: true);
       return;
     }
+
     setState(() => _isLoading = true);
+
     final result = await ApiService.login(
-      email: _emailCtrl.text.trim(),
-      password: _passwordCtrl.text,
+      email: email,
+      password: password,
     );
-    setState(() => _isLoading = false);
-    if (!mounted) return;
-    if (result['error'] != null) {
-      _showSnack(result['error'], isError: true);
-    } else {
-      await AuthService.saveLoginData(
-        result['token'] ?? '',
-        result['user'] ?? {},
-      );
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
+
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
+
+    if (!mounted) return;
+
+    if (result['error'] != null) {
+      _showSnack('${result['error']}', isError: true);
+      return;
+    }
+
+    final token = '${result['token'] ?? ''}';
+    final rawUser = result['user'];
+
+    debugPrint('LOGIN RESULT: $result');
+    debugPrint('LOGIN TOKEN: $token');
+    debugPrint('LOGIN USER: $rawUser');
+
+    if (token.isEmpty) {
+      _showSnack(
+        'Đăng nhập thành công nhưng server không trả token',
+        isError: true,
+      );
+      return;
+    }
+
+    final user = rawUser is Map<String, dynamic>
+        ? rawUser
+        : Map<String, dynamic>.from(rawUser as Map);
+
+    await AuthService.saveLoginData(token, user);
+
+    final savedToken = await AuthService.getToken();
+    debugPrint('SAVED TOKEN: $savedToken');
+
+    if (!mounted) return;
+
+    if (savedToken == null || savedToken.isEmpty) {
+      _showSnack('Không lưu được token đăng nhập', isError: true);
+      return;
+    }
+
+    Navigator.pushReplacementNamed(context, '/home');
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -74,6 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     final formWidth = w > 600 ? 400.0 : w - 48.0;
+
     return Scaffold(
       backgroundColor: _C.bg,
       body: Stack(
@@ -116,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Chao mung tro lai!',
+                            'Chào mừng trở lại!',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -125,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 4),
                           const Text(
-                            'Dang nhap de tiep tuc',
+                            'Đăng nhập để tiếp tục',
                             style: TextStyle(fontSize: 13, color: _C.textSub),
                           ),
                           const SizedBox(height: 24),
@@ -138,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 14),
                           _buildField(
                             controller: _passwordCtrl,
-                            label: 'Mat khau',
+                            label: 'Mật khẩu',
                             icon: Icons.lock_outline_rounded,
                             obscure: !_showPassword,
                             suffix: IconButton(
@@ -160,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: GestureDetector(
                               onTap: () {},
                               child: const Text(
-                                'Quen mat khau?',
+                                'Quên mật khẩu?',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: _C.purple4,
@@ -171,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 24),
                           _buildButton(
-                            label: 'Dang nhap',
+                            label: 'Đăng nhập',
                             onTap: _isLoading ? null : _login,
                             isLoading: _isLoading,
                           ),
@@ -183,14 +224,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text(
-                          'Chua co tai khoan? ',
+                          'Chưa có tài khoản? ',
                           style: TextStyle(fontSize: 13, color: _C.textSub),
                         ),
                         GestureDetector(
                           onTap: () =>
                               Navigator.pushNamed(context, '/register'),
                           child: const Text(
-                            'Dang ky ngay',
+                            'Đăng ký ngay',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -211,37 +252,37 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildLogo() => Column(
-    children: [
-      Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          color: _C.pink100,
-          shape: BoxShape.circle,
-          border: Border.all(color: _C.pink200, width: 2),
-        ),
-        child: const Icon(
-          Icons.health_and_safety_rounded,
-          size: 44,
-          color: _C.pink400,
-        ),
-      ),
-      const SizedBox(height: 14),
-      const Text(
-        'HealthSync AI',
-        style: TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w700,
-          color: _C.textMain,
-        ),
-      ),
-      const SizedBox(height: 4),
-      const Text(
-        'Quan ly suc khoe ca nhan',
-        style: TextStyle(fontSize: 13, color: _C.textSub),
-      ),
-    ],
-  );
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: _C.pink100,
+              shape: BoxShape.circle,
+              border: Border.all(color: _C.pink200, width: 2),
+            ),
+            child: const Icon(
+              Icons.health_and_safety_rounded,
+              size: 44,
+              color: _C.pink400,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'HealthSync AI',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w700,
+              color: _C.textMain,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Quản lý sức khỏe cá nhân',
+            style: TextStyle(fontSize: 13, color: _C.textSub),
+          ),
+        ],
+      );
 
   Widget _buildField({
     required TextEditingController controller,
@@ -287,51 +328,52 @@ class _LoginScreenState extends State<LoginScreen> {
     required String label,
     required VoidCallback? onTap,
     bool isLoading = false,
-  }) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      width: double.infinity,
-      height: 52,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE07FA8), Color(0xFFC97FD4)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: _C.pink400.withValues(alpha: 0.35),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Center(
-        child: isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
-              )
-            : Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
+  }) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          height: 52,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE07FA8), Color(0xFFC97FD4)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: _C.pink400.withValues(alpha: 0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-      ),
-    ),
-  );
+            ],
+          ),
+          child: Center(
+            child: isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
+        ),
+      );
 
   Widget _blob(double size, Color color) => Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-  );
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
 }
